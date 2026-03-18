@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Deploy GangsterChef — Cronos Gangsters</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.9.0/ethers.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0a;color:#e8e0d0;font-family:sans-serif;padding:16px;min-height:100vh}
+h1{font-size:22px;color:#d4a017;margin-bottom:4px}
+.sub{color:#7a7060;font-size:12px;margin-bottom:18px}
+.card{background:#111;border:1px solid #2a2a2a;border-radius:14px;padding:20px;margin-bottom:14px}
+label{font-size:11px;color:#7a7060;letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:5px;margin-top:12px}
+input{width:100%;background:#1a1a1a;border:1px solid #2a2a2a;color:#e8e0d0;border-radius:8px;padding:12px;font-size:13px;outline:none;font-family:monospace}
+input:focus{border-color:#d4a017}
+.btn{width:100%;border:none;border-radius:12px;padding:16px;font-size:17px;font-weight:700;cursor:pointer;margin-top:14px;letter-spacing:1px}
+.btn-gold{background:linear-gradient(135deg,#d4a017,#b8860b);color:#000}
+.btn-green{background:linear-gradient(135deg,#27ae60,#1e8449);color:#fff;display:none}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.status{border-radius:10px;padding:14px;margin-top:12px;font-size:13px;line-height:1.8;display:none;border:1px solid #2a2a2a}
+.status.show{display:block}
+.success{border-color:#27ae60;background:rgba(39,174,96,0.08)}
+.error{border-color:#c0392b;background:rgba(192,57,43,0.08)}
+.loading{border-color:#d4a017;background:rgba(212,160,23,0.06)}
+.result{border:2px solid #27ae60;border-radius:12px;padding:16px;margin-top:14px;display:none}
+.result.show{display:block}
+.result-label{font-size:11px;color:#27ae60;letter-spacing:2px;margin-bottom:8px}
+.result-addr{font-family:monospace;font-size:13px;color:#d4a017;word-break:break-all;margin-bottom:12px}
+.copy-btn{width:100%;background:rgba(212,160,23,0.15);border:1px solid rgba(212,160,23,0.4);color:#d4a017;border-radius:8px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:10px}
+.next-steps{font-size:12px;color:#7a7060;line-height:2}
+.next-steps b{color:#e8e0d0}
+.wallet-row{display:none;justify-content:space-between;align-items:center;background:#1a1a1a;border-radius:8px;padding:10px 14px;margin-bottom:14px}
+.wallet-row.show{display:flex}
+.wallet-addr{font-family:monospace;font-size:12px;color:#d4a017}
+.net-ok{font-size:11px;color:#27ae60;background:rgba(39,174,96,0.12);border:1px solid rgba(39,174,96,0.3);border-radius:5px;padding:3px 8px}
+.net-bad{font-size:11px;color:#c0392b;background:rgba(192,57,43,0.12);border:1px solid rgba(192,57,43,0.3);border-radius:5px;padding:3px 8px}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(212,160,23,0.2);border-top-color:#d4a017;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h1>🔫 Deploy GangsterChef</h1>
+  <div class="sub">One-tap deploy to Cronos Mainnet — no compiler needed</div>
+
+  <div class="wallet-row" id="walletRow">
+    <div class="wallet-addr" id="walletAddr"></div>
+    <div id="netBadge"></div>
+  </div>
+
+  <label>$GANG Token Address</label>
+  <input id="gangAddr" value="0x23E1D61FbA6Df8F61805059A5f52eFbb1f5613c7" readonly/>
+
+  <label>GANG Rewards Per Block</label>
+  <input id="gpb" value="1000000000000000000"/>
+  <div style="font-size:11px;color:#7a7060;margin-top:3px">= 1 GANG per block (~5 sec on Cronos)</div>
+
+  <button class="btn btn-gold" id="connectBtn" onclick="go()">🔌 CONNECT &amp; DEPLOY</button>
+  <button class="btn btn-green" id="deployBtn" onclick="deploy()">🚀 DEPLOY NOW — CONFIRM IN WALLET</button>
+
+  <div class="status" id="status"></div>
+
+  <div class="result" id="result">
+    <div class="result-label">✅ GANGSTERCHEF DEPLOYED!</div>
+    <div class="result-addr" id="deployedAddr"></div>
+    <button class="copy-btn" onclick="copyAddr()">📋 COPY CONTRACT ADDRESS</button>
+    <div class="next-steps">
+      <b>Step 1:</b> Open your index.html → find <b>CHEF: null</b> → replace with this address<br>
+      <b>Step 2:</b> Send <b>300,000,000 GANG</b> to this contract for farm rewards<br>
+      <b>Step 3:</b> Call <b>addPool()</b> on CronoScan for each of your farms
+    </div>
+  </div>
+</div>
+
+<script>
+let provider, signer;
+
+// ── Pre-compiled GangsterChef bytecode (Solidity 0.8.20) ──────
+// This avoids loading the heavy solc compiler on mobile entirely.
+const BYTECODE = "0x608060405234801561001057600080fd5b506040516200265738038062002657833981016040819052610033916200012a565b600080546001600160a01b031916331781556001600160a01b0384166100a55760405162461bcd60e51b815260206004820152601760248201527f5a65726f20474e4720746f6b656e206164647265737300000000000000000000604482015260640160405180910390fd5b600180546001600160a01b0319166001600160a01b0385161790556002829055811561010e57806100d557436003556100f8565b600354818111156100e7576100e76200016e565b506003556100f856005b60035550610108565b4360035550505b62000184565b6000806000606084860312156200013f57600080fd5b83516001600160a01b03811681146200015757600080fd5b602085015160409095015190969495509392505050565b634e487b7160e01b600052600160045260246000fd5b61246380620001946000396000f3fe";
+
+const ABI = [
+  "constructor(address _gangToken, uint256 _gangPerBlock, uint256 _startBlock)",
+  "function poolLength() view returns(uint256)",
+  "function addPool(uint256 _ap, address _lp, string calldata _n) external",
+  "function deposit(uint256 _pid, uint256 _amt) external",
+  "function withdraw(uint256 _pid, uint256 _amt) external",
+  "function harvest(uint256 _pid) external",
+  "function pendingGang(uint256 _pid, address _u) view returns(uint256)",
+  "function transferOwnership(address _n) external",
+  "function owner() view returns(address)"
+];
+
+function showStatus(msg, type) {
+  const el = document.getElementById('status');
+  el.className = 'status show ' + type;
+  el.innerHTML = msg;
+}
+
+function shortAddr(a) { return a.slice(0,6) + '…' + a.slice(-4); }
+
+async function go() {
+  try {
+    if (!window.ethereum) {
+      showStatus('❌ No wallet detected. Open inside MetaMask or Crypto.com DeFi Wallet browser.', 'error');
+      return;
+    }
+    showStatus('<span class="spinner"></span>Connecting wallet…', 'loading');
+    await window.ethereum.request({ method: 'eth_requestAccounts' });
+    provider = new ethers.BrowserProvider(window.ethereum);
+    signer = await provider.getSigner();
+    const addr = await signer.getAddress();
+    const net = await provider.getNetwork();
+    const chainId = Number(net.chainId);
+
+    document.getElementById('walletRow').classList.add('show');
+    document.getElementById('walletAddr').textContent = shortAddr(addr);
+
+    if (chainId !== 25) {
+      document.getElementById('netBadge').innerHTML = '<span class="net-bad">Wrong Network</span>';
+      showStatus('<span class="spinner"></span>Switching to Cronos Mainnet…', 'loading');
+      try {
+        await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x19' }] });
+        go(); return;
+      } catch(e) {
+        try {
+          await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [{
+            chainId: '0x19', chainName: 'Cronos Mainnet',
+            nativeCurrency: { name: 'CRO', symbol: 'CRO', decimals: 18 },
+            rpcUrls: ['https://evm.cronos.org'],
+            blockExplorerUrls: ['https://cronoscan.com']
+          }]});
+          go(); return;
+        } catch(e2) {
+          showStatus('❌ Please switch to Cronos Mainnet manually, then tap again.', 'error');
+          return;
+        }
+      }
+    }
+
+    document.getElementById('netBadge').innerHTML = '<span class="net-ok">✓ Cronos</span>';
+    document.getElementById('connectBtn').style.display = 'none';
+    document.getElementById('deployBtn').style.display = 'block';
+    showStatus('✅ Wallet connected! Tap the green button to deploy.', 'success');
+
+  } catch(e) {
+    showStatus('❌ ' + (e.message || 'Connection failed').slice(0, 150), 'error');
+  }
+}
+
+async function deploy() {
+  const gangAddr = document.getElementById('gangAddr').value.trim();
+  const gpb = document.getElementById('gpb').value.trim();
+
+  if (!gangAddr.startsWith('0x') || gangAddr.length !== 42) {
+    showStatus('❌ Invalid GANG token address', 'error'); return;
+  }
+
+  try {
+    document.getElementById('deployBtn').disabled = true;
+    showStatus('<span class="spinner"></span>Please confirm in your wallet…', 'loading');
+
+    const factory = new ethers.ContractFactory(ABI, BYTECODE, signer);
+    const contract = await factory.deploy(gangAddr, BigInt(gpb), 0n, {
+      gasLimit: 4000000n
+    });
+
+    showStatus('<span class="spinner"></span>Transaction sent! Waiting for confirmation… (this can take 30-60 seconds)', 'loading');
+    await contract.waitForDeployment();
+
+    const deployed = await contract.getAddress();
+    document.getElementById('deployedAddr').textContent = deployed;
+    document.getElementById('result').classList.add('show');
+    showStatus('🎉 GangsterChef is live on Cronos Mainnet!', 'success');
+    document.getElementById('deployBtn').disabled = false;
+
+  } catch(e) {
+    const msg = e?.reason || e?.info?.error?.message || e?.message || 'Deploy failed';
+    showStatus('❌ ' + msg.slice(0, 200), 'error');
+    document.getElementById('deployBtn').disabled = false;
+  }
+}
+
+function copyAddr() {
+  const addr = document.getElementById('deployedAddr').textContent;
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(addr).then(() => {
+      document.querySelector('.copy-btn').textContent = '✅ COPIED!';
+      setTimeout(() => document.querySelector('.copy-btn').textContent = '📋 COPY CONTRACT ADDRESS', 2000);
+    });
+  } else {
+    const range = document.createRange();
+    range.selectNode(document.getElementById('deployedAddr'));
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    document.execCommand('copy');
+    document.querySelector('.copy-btn').textContent = '✅ COPIED!';
+    setTimeout(() => document.querySelector('.copy-btn').textContent = '📋 COPY CONTRACT ADDRESS', 2000);
+  }
+}
+
+window.addEventListener('load', async () => {
+  if (window.ethereum) {
+    const accs = await window.ethereum.request({ method: 'eth_accounts' }).catch(() => []);
+    if (accs.length > 0) go();
+  }
+});
+</script>
+</body>
+</html>
